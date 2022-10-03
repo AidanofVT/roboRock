@@ -6,6 +6,7 @@
 #include "ThisThread.h"
 #include "mbed.h"
 #include "mbed_thread.h"
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <utility>
@@ -13,10 +14,11 @@
 AnalogIn fromAmp (p20);
 AnalogOut toActuator (p18);
 DigitalIn fromMaster (p19);
-float slickness {0.1}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
-float inertia {60}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
+float slickness {0.95}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
+float inertia {5}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
 float inRange {0.1}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
-float zeroMagnetism{0.03}; // Based on the known input signal noise. 
+float zeroMagnetism {0.035}; // Based on the known input signal noise.
+float decelerationFactor {3}; // As input approaches zero, output approaches zero exponentially faster, according to this.
 float inOffsetFromZero {};
 float inZero {};
 float inMax {};
@@ -25,8 +27,10 @@ float inScaled {};
 float outMin {0.0};
 float outMax {1.0};
 float velocity{0};
+float deltaV{};
+float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
 bool fromMasterPrior {false};
-float debugOut{};
+int debugOut{};
 
 float clamp (float toClamp, float min, float max) {
 // Given a value, returns that value if it's within a given maximum / minimum.
@@ -38,10 +42,6 @@ float clamp (float toClamp, float min, float max) {
         toClamp = min;
     }
     return toClamp;
-}
-
-int signOf (float input) {
-    return input / -input * -1;
 }
 
 float pullToZero (float toRound) {
@@ -67,8 +67,24 @@ If you want to change how the actuator behaves, it's probably going to be done h
 One possible improvement is to make velocity zero when the limits are reached.
 */
     readInputs();
-    velocity = clamp (velocity * slickness + inScaled / inertia, -1.0, 1.0);
-    toActuator = clamp (toActuator + velocity, outMin, outMax);
+//inertia 75 works
+    deltaV = pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled);
+    velocity = clamp (velocity * slickness + deltaV, -1.0, 1.0);
+    toActuator = command = clamp (command + velocity, outMin, outMax);
+    // if (Kernel::get_ms_count() % 200 == 0) {
+    //     printf("%f, %f \n", command - outMin, velocity);
+    // }
+    if (command >= outMax || command <= outMin) {
+        // printf("beep");
+        velocity = 0;
+    }
+    // if (deltaV != 0) {
+    //     printf("%f \n", deltaV);
+    // }
+    // else if (debugOut != 0) {
+    //     printf("%i \n", debugOut);
+    //     debugOut = 0;
+    // }
 }
 
 float lerp (int startTime, int endTime, float startValue, float endValue) {
@@ -88,22 +104,22 @@ By default, the movement will yield to even a small resistance, meaning it's not
 If yield = false, though, the movement will be forced.
 */
     velocity = 0.0;
-    float startFrom  = toActuator;
+    float startFrom = command;
     int moveStartTime = Kernel::get_ms_count();
     while (true) {
         readInputs();
-        if ((inScaled > 0.1 || inScaled < -0.1) && yield == true) {
+        if ((inScaled > 0.15 || inScaled < -0.15) && yield == true) {
             printf("first escape\n");
             return false;
             break;
         }
-        else if (pullToZero(toActuator - to) == 0.0f) {
+        else if (pullToZero(command - to) == 0.0f) {
             printf("second escape\n");
             return true;
             break;
         }
         else {
-            toActuator = lerp(moveStartTime, moveStartTime + duration, startFrom, to);
+            toActuator = command = lerp(moveStartTime, moveStartTime + duration, startFrom, to);
             ThisThread::sleep_for(1ms);
         }
     }
@@ -117,13 +133,13 @@ void calibrate () {
     move(1.0, 4000);
 /* --until some significant resistance is detected. The current positions becomes the top of the working range.
    The intention is for a user to use place their hand where they want the limit to be.*/
-    outMin = toActuator;
+    outMin = command;
     // printf("outMin = %f\n", outMin);
     ThisThread::sleep_for(500ms);
     // printf("searching for bottom...\n");
-    move(1.0, (toActuator - 1.0) * -1 * 4000);
+    move(1.0, (command - 1.0) * -1 * 4000);
 // Then repeat to get the bottom of the range.
-    outMax = toActuator;
+    outMax = command;
     // printf("outMax = %f\n", outMax);
     // printf("returning to minimum...\n");
     move(outMin, 1000);
@@ -136,16 +152,16 @@ The intent is for users to simply power-cycle the controller when recalibration 
 This will cause the actuator to make some big, abrupt moves though. 
 */
 // This initial delay is to let any physical shaking work itself out before an initial measurement is taken.
-    ThisThread::sleep_for(1200);
+    ThisThread::sleep_for(1500);
     inZero = fromAmp;
     inMax = inZero + inRange;
     inMin = inZero - inRange;
-    // printf("%f, %f, %f\n", inMin, inZero, inMax);
+    printf("%f, %f, %f\n", inMin, inZero, inMax);
     calibrate();
     while (true) {
 // If there's a rising edge in the 'retract now' signal, retract.
         if (fromMaster == true && fromMasterPrior == false) {
-            move(outMin, 200, false);
+            move(outMin, 100, false);
 //      Following a forced move, wait for the 'retract now' signal to disappear.
             while (fromMaster == true) {
                 ThisThread::sleep_for(1);
