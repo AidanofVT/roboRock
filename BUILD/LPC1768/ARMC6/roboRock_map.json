@@ -2,7 +2,7 @@
     {
         "module": "[lib]/c_w.l",
         "size": {
-            ".text": 4564,
+            ".text": 4648,
             ".data": 16,
             ".bss": 348,
             ".text-delta": 0,
@@ -14,6 +14,17 @@
         "module": "[lib]/fz_ws.l",
         "size": {
             ".text": 4642,
+            ".data": 0,
+            ".bss": 0,
+            ".text-delta": 0,
+            ".data-delta": 0,
+            ".bss-delta": 0
+        }
+    },
+    {
+        "module": "[lib]/libcppabi_w.l",
+        "size": {
+            ".text": 44,
             ".data": 0,
             ".bss": 0,
             ".text-delta": 0,
@@ -46,10 +57,10 @@
     {
         "module": "main.o",
         "size": {
-            ".text": 1572,
+            ".text": 1758,
             ".data": 28,
-            ".bss": 113,
-            ".text-delta": 0,
+            ".bss": 121,
+            ".text-delta": -148,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -57,7 +68,7 @@
     {
         "module": "mbed-os/cmsis",
         "size": {
-            ".text": 8862,
+            ".text": 9660,
             ".data": 168,
             ".bss": 6610,
             ".text-delta": 0,
@@ -68,7 +79,7 @@
     {
         "module": "mbed-os/connectivity",
         "size": {
-            ".text": 168,
+            ".text": 224,
             ".data": 0,
             ".bss": 0,
             ".text-delta": 0,
@@ -90,7 +101,7 @@
     {
         "module": "mbed-os/hal",
         "size": {
-            ".text": 870,
+            ".text": 940,
             ".data": 0,
             ".bss": 2,
             ".text-delta": 0,
@@ -101,7 +112,7 @@
     {
         "module": "mbed-os/platform",
         "size": {
-            ".text": 7257,
+            ".text": 8003,
             ".data": 64,
             ".bss": 340,
             ".text-delta": 0,
@@ -112,7 +123,7 @@
     {
         "module": "mbed-os/rtos",
         "size": {
-            ".text": 496,
+            ".text": 514,
             ".data": 0,
             ".bss": 8,
             ".text-delta": 0,
@@ -123,7 +134,7 @@
     {
         "module": "mbed-os/targets",
         "size": {
-            ".text": 4229,
+            ".text": 4579,
             ".data": 4,
             ".bss": 240,
             ".text-delta": 0,
@@ -133,10 +144,10 @@
     },
     {
         "summary": {
-            "static_ram": 9005,
+            "static_ram": 9013,
             "static_ram_delta": 0,
-            "total_flash": 35258,
-            "total_flash_delta": 0
+            "total_flash": 37610,
+            "total_flash_delta": -148
         }
     }
 ]

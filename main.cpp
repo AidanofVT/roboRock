@@ -14,11 +14,10 @@
 AnalogIn fromAmp (p20);
 AnalogOut toActuator (p18);
 DigitalIn fromMaster (p19);
-float slickness {0.8}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
+float slickness {0.99}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
 float inertia {1}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
 float inRange {0.8}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
-float zeroMagnetism {0.01}; // Based on the known input signal noise.
-float decelerationFactor {3}; // As input approaches zero, output approaches zero exponentially faster, according to this.
+float zeroMagnetism {0.035}; // Based on the known input signal noise.
 float inOffsetFromZero {};
 float inZero {};
 float inMax {};
@@ -31,6 +30,8 @@ float maxAcceleration {.002}; // {0.055}; // Can fully actuate in ~300ms. Though
 float velocity{0};
 float deltaV{};
 float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
+float anticipatedAUC;
+float inScaledPrior {};
 bool fromMasterPrior {false};
 int debugOut{};
 
@@ -56,9 +57,24 @@ float pullToZero (float toRound) {
 }
 
 float readInputs () {
+    inScaledPrior = inScaled;
     inOffsetFromZero = clamp(fromAmp, inMin, inMax) - inZero;
     inScaled = pullToZero(inOffsetFromZero / inRange);
     return inScaled;
+}
+
+float calculateFutureAUC () {
+    float slope = inScaled - inScaledPrior;
+    float point = inScaled;
+    anticipatedAUC = point + inScaledPrior;
+    for (int i = 48; i > 0 && point * inScaled >= 0; --i) {
+        point += slope;
+        anticipatedAUC += point;
+    }
+    // if (slope != 0.0 && Kernel::get_ms_count() % 500 == 0) {
+    //     printf("%f, %f, %f, %f, %f \n", inScaled, inScaledPrior, slope, point, anticipatedAUC);
+    // }
+    return anticipatedAUC;
 }
 
 void comply () {
@@ -69,16 +85,19 @@ If you want to change how the actuator behaves, it's probably going to be done h
 One possible improvement is to make velocity zero when the limits are reached.
 */
     readInputs();
-    float xa = 1.7 + copysign(1.3, inScaled * velocity + 0.000001);
-    float xb = pow(abs(inScaled), xa) / inertia;
-    float xc = copysign(xb, inScaled);
-    float xd = clamp(xc, -maxAcceleration, maxAcceleration);
+    // float rawDeltaV = calculateFutureAUC();
+    // float exponent = 1.7 + copysign(1.3, (inScaled - inScaledPrior) * velocity + 0.000001);
+    // float rawDeltaV = copysign(pow(abs(inScaled), xa), inScaled);
+    calculateFutureAUC();
+    float exponent = 1.35 + copysign(0.7, anticipatedAUC * velocity + 0.000001);
+    float rawDeltaV = copysign(pow(abs(anticipatedAUC) / 2500, exponent), anticipatedAUC);
+    float deltaV = clamp(rawDeltaV / inertia, -maxAcceleration, maxAcceleration);
 // pow() can't handle negative numbers raised to non-integer powers    // deltaV = clamp(copysign(pow(abs(inScaled) / inertia, 1.7 + copysign(1.3, inScaled * velocity)), inScaled), -maxAcceleration, maxAcceleration);
     // deltaV = clamp(pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled), -maxAcceleration, maxAcceleration);
-    // if (Kernel::get_ms_count() % 200 == 0) {
-    //     printf("%f, %f, %f \n", inScaled, velocity, xa);
+    // if (Kernel::get_ms_count() % 500 == 0) {
+    //     printf("%f, %f, %f, %f, %f \n", inScaledPrior, inScaled, velocity, anticipatedAUC, rawDeltaV);
     // }
-    velocity = clamp(velocity * slickness + xd, -maxSpeed, maxSpeed);
+    velocity = clamp(velocity * slickness + deltaV, -maxSpeed, maxSpeed);
     toActuator = command = clamp(command + velocity, outMin, outMax);
     if (command >= outMax || command <= outMin) {
         velocity = 0;
