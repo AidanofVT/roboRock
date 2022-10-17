@@ -14,10 +14,10 @@
 AnalogIn fromAmp (p20);
 AnalogOut toActuator (p18);
 DigitalIn fromMaster (p19);
-float slickness {0.95}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
-float inertia {5}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
-float inRange {0.1}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
-float zeroMagnetism {0.035}; // Based on the known input signal noise.
+float slickness {0.8}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
+float inertia {1}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
+float inRange {0.8}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
+float zeroMagnetism {0.01}; // Based on the known input signal noise.
 float decelerationFactor {3}; // As input approaches zero, output approaches zero exponentially faster, according to this.
 float inOffsetFromZero {};
 float inZero {};
@@ -26,6 +26,8 @@ float inMin {};
 float inScaled {};
 float outMin {0.0};
 float outMax {1.0};
+float maxSpeed {0.5};// {0.5}; // Per datasheet: max speed 33 inches per second.
+float maxAcceleration {.002}; // {0.055}; // Can fully actuate in ~300ms. Though note that it's accelerating for the first and last ~100ms.
 float velocity{0};
 float deltaV{};
 float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
@@ -67,24 +69,20 @@ If you want to change how the actuator behaves, it's probably going to be done h
 One possible improvement is to make velocity zero when the limits are reached.
 */
     readInputs();
-//inertia 75 works
-    deltaV = pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled);
-    velocity = clamp (velocity * slickness + deltaV, -1.0, 1.0);
-    toActuator = command = clamp (command + velocity, outMin, outMax);
+    float xa = 1.7 + copysign(1.3, inScaled * velocity + 0.000001);
+    float xb = pow(abs(inScaled), xa) / inertia;
+    float xc = copysign(xb, inScaled);
+    float xd = clamp(xc, -maxAcceleration, maxAcceleration);
+// pow() can't handle negative numbers raised to non-integer powers    // deltaV = clamp(copysign(pow(abs(inScaled) / inertia, 1.7 + copysign(1.3, inScaled * velocity)), inScaled), -maxAcceleration, maxAcceleration);
+    // deltaV = clamp(pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled), -maxAcceleration, maxAcceleration);
     // if (Kernel::get_ms_count() % 200 == 0) {
-    //     printf("%f, %f \n", command - outMin, velocity);
+    //     printf("%f, %f, %f \n", inScaled, velocity, xa);
     // }
+    velocity = clamp(velocity * slickness + xd, -maxSpeed, maxSpeed);
+    toActuator = command = clamp(command + velocity, outMin, outMax);
     if (command >= outMax || command <= outMin) {
-        // printf("beep");
         velocity = 0;
     }
-    // if (deltaV != 0) {
-    //     printf("%f \n", deltaV);
-    // }
-    // else if (debugOut != 0) {
-    //     printf("%i \n", debugOut);
-    //     debugOut = 0;
-    // }
 }
 
 float lerp (int startTime, int endTime, float startValue, float endValue) {
@@ -135,7 +133,7 @@ void calibrate () {
    The intention is for a user to use place their hand where they want the limit to be.*/
     outMin = command;
     // printf("outMin = %f\n", outMin);
-    ThisThread::sleep_for(500ms);
+    ThisThread::sleep_for(800ms);
     // printf("searching for bottom...\n");
     move(1.0, (command - 1.0) * -1 * 4000);
 // Then repeat to get the bottom of the range.
