@@ -25,8 +25,8 @@ float inMin {};
 float inScaled {};
 float outMin {0.0};
 float outMax {1.0};
-float maxSpeed {0.5};// {0.5}; // Per datasheet: max speed 33 inches per second.
-float maxAcceleration {.002}; // {0.055}; // Can fully actuate in ~300ms. Though note that it's accelerating for the first and last ~100ms.
+float maxSpeed {0.5}; // Per datasheet: max speed 33 inches per second.
+float maxAcceleration {.0002}; // Can fully actuate in ~300ms. Though note that it's accelerating for the first and last ~100ms.
 float velocity{0};
 float deltaV{};
 float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
@@ -66,8 +66,8 @@ float readInputs () {
 float calculateFutureAUC () {
     float slope = inScaled - inScaledPrior;
     float point = inScaled;
-    anticipatedAUC = point + inScaledPrior;
-    for (int i = 48; i > 0 && point * inScaled >= 0; --i) {
+    anticipatedAUC = point + inScaledPrior * 3;
+    for (int i = 4; i > 0; --i) {
         point += slope;
         anticipatedAUC += point;
     }
@@ -89,8 +89,8 @@ One possible improvement is to make velocity zero when the limits are reached.
     // float exponent = 1.7 + copysign(1.3, (inScaled - inScaledPrior) * velocity + 0.000001);
     // float rawDeltaV = copysign(pow(abs(inScaled), xa), inScaled);
     calculateFutureAUC();
-    float exponent = 1.35 + copysign(0.7, anticipatedAUC * velocity + 0.000001);
-    float rawDeltaV = copysign(pow(abs(anticipatedAUC) / 2500, exponent), anticipatedAUC);
+    float exponent = 1.7 + copysign(1.4, anticipatedAUC * velocity + 0.000001);
+    float rawDeltaV = copysign(pow(abs(anticipatedAUC) / 49, exponent), anticipatedAUC);
     float deltaV = clamp(rawDeltaV / inertia, -maxAcceleration, maxAcceleration);
 // pow() can't handle negative numbers raised to non-integer powers    // deltaV = clamp(copysign(pow(abs(inScaled) / inertia, 1.7 + copysign(1.3, inScaled * velocity)), inScaled), -maxAcceleration, maxAcceleration);
     // deltaV = clamp(pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled), -maxAcceleration, maxAcceleration);

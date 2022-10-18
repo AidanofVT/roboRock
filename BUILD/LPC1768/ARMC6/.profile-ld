@@ -3,6 +3,7 @@
         "--any_contingency",
         "--cpu=Cortex-M3",
         "--ide=mbed",
+        "--inline",
         "--keep=os_cb_sections",
         "--legacyalign",
         "--predefine=\"-DMBED_BOOT_STACK_SIZE=1024\"",
@@ -13,9 +14,7 @@
         "--predefine=\"-DMBED_ROM_SIZE=0x80000\"",
         "--predefine=\"-DMBED_ROM_START=0x0\"",
         "--predefine=\"-DXIP_ENABLE=0\"",
-        "--remove",
-        "--show_full_path",
-        "--verbose"
+        "--show_full_path"
     ],
     "macros": [],
     "symbols": [
@@ -48,7 +47,7 @@
         "DEVICE_USBDEVICE=1",
         "DEVICE_USTICKER=1",
         "DEVICE_WATCHDOG=1",
-        "MBED_BUILD_TIMESTAMP=1666045547.25112",
+        "MBED_BUILD_TIMESTAMP=1666106748.2245436",
         "TARGET_CORTEX",
         "TARGET_CORTEX_M",
         "TARGET_LIKE_CORTEX_M3",
