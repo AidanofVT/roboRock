@@ -16,24 +16,22 @@ AnalogOut toActuator (p18);
 DigitalIn fromMaster (p19);
 float slickness {0.99}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
 float inertia {1}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
-float inRange {0.8}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
-float zeroMagnetism {0.035}; // Based on the known input signal noise.
-float inOffsetFromZero {};
-float inZero {};
+float inRange {0.3}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
+float zeroMagnetism {0.053}; // Based on the known input signal noise.
+float inZero {}; // Based on value at startup
 float inMax {};
 float inMin {};
 float inScaled {};
 float outMin {0.0};
 float outMax {1.0};
-float maxSpeed {0.5}; // Per datasheet: max speed 33 inches per second.
-float maxAcceleration {.0002}; // Can fully actuate in ~300ms. Though note that it's accelerating for the first and last ~100ms.
+float maxSpeed {0.005}; // Per datasheet: max speed 33 inches per second.
+float maxAcceleration {.0004}; // Can fully actuate in ~300ms. Though note that it's accelerating for the first and last ~100ms.
 float velocity{0};
 float deltaV{};
 float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
-float anticipatedAUC;
+float anticipatedAUC; // AUC = Area Under Curve
 float inScaledPrior {};
 bool fromMasterPrior {false};
-int debugOut{};
 
 float clamp (float toClamp, float min, float max) {
 // Given a value, returns that value if it's within a given maximum / minimum.
@@ -48,7 +46,7 @@ float clamp (float toClamp, float min, float max) {
 }
 
 float pullToZero (float toRound) {
-// Used for filtering out input noise, and simplifying float math when things approach zero.
+// Used for filtering out input noise, and simplifying floating-point math when things approach zero.
 // Note that it's not really a rounding function, since if it's not pulled to zero, precision is maintained.
     if (-zeroMagnetism < toRound && toRound < zeroMagnetism) {
         return 0;
@@ -57,13 +55,18 @@ float pullToZero (float toRound) {
 }
 
 float readInputs () {
+// Updates the 'inScaled' variable, a 0-1 clamped and zero-pulled representation of the force signal.
     inScaledPrior = inScaled;
-    inOffsetFromZero = clamp(fromAmp, inMin, inMax) - inZero;
-    inScaled = pullToZero(inOffsetFromZero / inRange);
+    inScaled = pullToZero((clamp(fromAmp, inMin, inMax) - inZero) / inRange);
     return inScaled;
 }
 
 float calculateFutureAUC () {
+/*
+AUC = "area under curve".
+It's one part the current inScaled, three parts the previous inScaled, and four parts articipated future inScaled values.
+Future values simply assume the current rate of change.
+*/
     float slope = inScaled - inScaledPrior;
     float point = inScaled;
     anticipatedAUC = point + inScaledPrior * 3;
@@ -80,25 +83,23 @@ float calculateFutureAUC () {
 void comply () {
 /*
 This is the important part: where the (imaginary/prescriptive) velocity is calculated, and the actuator is commanded.
-This function is the only contexnt of the main loop, when it's not executing a move command.
-If you want to change how the actuator behaves, it's probably going to be done here.
-One possible improvement is to make velocity zero when the limits are reached.
+This function is the only content of the main loop, as long as it's not executing a move command.
+If you want to change how the actuator floats, it's probably going to be done here.
 */
     readInputs();
-    // float rawDeltaV = calculateFutureAUC();
-    // float exponent = 1.7 + copysign(1.3, (inScaled - inScaledPrior) * velocity + 0.000001);
-    // float rawDeltaV = copysign(pow(abs(inScaled), xa), inScaled);
     calculateFutureAUC();
-    float exponent = 1.7 + copysign(1.4, anticipatedAUC * velocity + 0.000001);
-    float rawDeltaV = copysign(pow(abs(anticipatedAUC) / 49, exponent), anticipatedAUC);
+    // For this formulation, the actuator responds exponentially more to deceleration forces and exponentially less to accelerating forces
+    float exponent = 1.5 + copysign(1.1, anticipatedAUC * velocity + 0.000001);
+    // pow() can't handle negative numbers raised to non-integer powers, so we use an ugly workaround
+    float rawDeltaV = copysign(pow(abs(anticipatedAUC) / 64, exponent), anticipatedAUC);
     float deltaV = clamp(rawDeltaV / inertia, -maxAcceleration, maxAcceleration);
-// pow() can't handle negative numbers raised to non-integer powers    // deltaV = clamp(copysign(pow(abs(inScaled) / inertia, 1.7 + copysign(1.3, inScaled * velocity)), inScaled), -maxAcceleration, maxAcceleration);
-    // deltaV = clamp(pow(abs(inScaled) / inertia, decelerationFactor) * copysign(1, inScaled), -maxAcceleration, maxAcceleration);
-    // if (Kernel::get_ms_count() % 500 == 0) {
-    //     printf("%f, %f, %f, %f, %f \n", inScaledPrior, inScaled, velocity, anticipatedAUC, rawDeltaV);
+    // if (Kernel::get_ms_count() % 200 == 0) {
+    //     printf("%f \n", inScaled);
+        // printf("%f, %f, %f, %f, %f \n", inScaledPrior, inScaled, velocity, anticipatedAUC, rawDeltaV);
     // }
     velocity = clamp(velocity * slickness + deltaV, -maxSpeed, maxSpeed);
     toActuator = command = clamp(command + velocity, outMin, outMax);
+    // If the actuator could have velocity-debt while stuck on the end if its range, that would be bad.
     if (command >= outMax || command <= outMin) {
         velocity = 0;
     }
@@ -126,12 +127,13 @@ If yield = false, though, the movement will be forced.
     while (true) {
         readInputs();
         if ((inScaled > 0.15 || inScaled < -0.15) && yield == true) {
-            printf("first escape\n");
+            // printf("Movement ended; encountered resistance.\n");
             return false;
             break;
         }
+    // FUTURE IMPROVEMENT: this methodology probably leaves some potential for floating-point errors to result in overshoot.
         else if (pullToZero(command - to) == 0.0f) {
-            printf("second escape\n");
+            // printf("Movement ended; destination reached.\n");
             return true;
             break;
         }
@@ -144,18 +146,24 @@ If yield = false, though, the movement will be forced.
 
 
 void calibrate () {
-// Starting from the minimum position, moves the actuator slowly downward...
+    // This initial delay is to let any physical shaking work itself out before an initial measurement is taken.
+    ThisThread::sleep_for(1500);
+    inZero = fromAmp;
+    inMax = inZero + inRange;
+    inMin = inZero - inRange;
+    printf("%f, %f, %f\n", inMin, inZero, inMax);
+    // Starting from the minimum position, moves the actuator slowly downward...
     // printf("calibrating \n");
     // printf("searching for top...\n");
     move(1.0, 4000);
-/* --until some significant resistance is detected. The current positions becomes the top of the working range.
-   The intention is for a user to use place their hand where they want the limit to be.*/
+    /* --until some significant resistance is detected. The current positions becomes the top of the working range.
+    The intention is for a user to use place their hand where they want the limit to be.*/
     outMin = command;
     // printf("outMin = %f\n", outMin);
     ThisThread::sleep_for(800ms);
     // printf("searching for bottom...\n");
     move(1.0, (command - 1.0) * -1 * 4000);
-// Then repeat to get the bottom of the range.
+    // Then repeat to get the bottom of the range.
     outMax = command;
     // printf("outMax = %f\n", outMax);
     // printf("returning to minimum...\n");
@@ -164,22 +172,15 @@ void calibrate () {
 
 int main() {
 /*
-Since the system has no inputs besides readings from the force transducer, there is no way to command a recalibration.
-The intent is for users to simply power-cycle the controller when recalibration is needed.
+If a user wants to re-define movement limits, or recalibrate input, they are expected to simply power-cycle the microcontroller.
 This will cause the actuator to make some big, abrupt moves though. 
 */
-// This initial delay is to let any physical shaking work itself out before an initial measurement is taken.
-    ThisThread::sleep_for(1500);
-    inZero = fromAmp;
-    inMax = inZero + inRange;
-    inMin = inZero - inRange;
-    printf("%f, %f, %f\n", inMin, inZero, inMax);
     calibrate();
     while (true) {
-// If there's a rising edge in the 'retract now' signal, retract.
+    // If there's a rising edge in the 'retract now' signal, retract.
         if (fromMaster == true && fromMasterPrior == false) {
             move(outMin, 100, false);
-//      Following a forced move, wait for the 'retract now' signal to disappear.
+    //      Following a forced move, wait for the 'retract now' signal to disappear.
             while (fromMaster == true) {
                 ThisThread::sleep_for(1);
             }
