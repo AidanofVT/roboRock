@@ -2,10 +2,10 @@
     {
         "module": "[lib]/c_w.l",
         "size": {
-            ".text": 4500,
+            ".text": 4478,
             ".data": 16,
             ".bss": 348,
-            ".text-delta": 22,
+            ".text-delta": 0,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -13,21 +13,10 @@
     {
         "module": "[lib]/fz_ws.l",
         "size": {
-            ".text": 4642,
+            ".text": 4304,
             ".data": 0,
             ".bss": 0,
-            ".text-delta": 338,
-            ".data-delta": 0,
-            ".bss-delta": 0
-        }
-    },
-    {
-        "module": "[lib]/m_ws.l",
-        "size": {
-            ".text": 1968,
-            ".data": 0,
-            ".bss": 0,
-            ".text-delta": 1968,
+            ".text-delta": 0,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -46,10 +35,10 @@
     {
         "module": "main.o",
         "size": {
-            ".text": 1810,
+            ".text": 1822,
             ".data": 28,
             ".bss": 117,
-            ".text-delta": 90,
+            ".text-delta": 20,
             ".data-delta": 0,
             ".bss-delta": 0
         }
@@ -135,8 +124,8 @@
         "summary": {
             "static_ram": 9009,
             "static_ram_delta": 0,
-            "total_flash": 35432,
-            "total_flash_delta": 2418
+            "total_flash": 33116,
+            "total_flash_delta": 20
         }
     }
 ]

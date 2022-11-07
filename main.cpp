@@ -14,8 +14,8 @@
 AnalogIn fromAmp (p20);
 AnalogOut toActuator (p18);
 DigitalIn fromMaster (p19);
-float slickness {0.98}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
-float inertia {0.0006}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
+float slickness {0.999}; // An inverted friction value: determines how quickly the actuator stops when no forces are applied
+float inertia {0.0004}; // Determines how reluctantly the actuator accelerates. No real limits to this value.
 float inRange {0.3}; // IMPORTANT: this is based on the known range of input voltages. If the voltage range changes, this should change.
 float zeroMagnetism {0.053}; // Based on the known input signal noise.
 float inZero {}; // Based on value at startup
@@ -24,8 +24,9 @@ float inMin {};
 float inScaled {};
 float outMin {0.0};
 float outMax {1.0};
-float maxSpeed {0.005}; // Per datasheet: max speed 33 inches per second.
-float maxAcceleration {.0003}; // Can fully actuate in ~300ms. Note, though, that it's accelerating for the first and last ~100ms.
+float maxSpeed {0.0055};     // Per datasheet: max speed 33 inches per second.
+float maxAcceleration {.0003};  // Can fully actuate in ~300ms. Note, though, that it's accelerating for the first and last ~100ms.
+                                // IMPORTANT: acceleration is also proportional to this!
 float velocity{0};
 float deltaV{};
 float command {}; // Allows us more precision in our calculations than AnalogOut allows. Actually does matter.
@@ -74,8 +75,9 @@ float readInputs () {
 
 float specialSauce (float input) {    
     float exponent {};
-    exponent = 2.0 + copysign(0.5, input * velocity + 0.00000001);
-    return copysign(pow(abs(input), exponent) / exponent, input);
+    exponent = 5.5 + copysign(4.5, input * velocity + 0.00000001);
+    // return copysign(pow(abs(input), exponent) / exponent, input);
+    return input / exponent;
 }
 
 float calculateFutureAUC () {
@@ -87,7 +89,7 @@ Future values simply assume the current rate of change.
     float slope = inScaled - inScaledPrior;
     float point = inScaled;
     anticipatedAUC = specialSauce(inScaledPrior) * 3;
-    for (int i = 5; i > 0; --i) {
+    for (int i = 21; i > 0; --i) {
         anticipatedAUC += specialSauce(point);
         point += slope;
     }
@@ -109,7 +111,7 @@ If you want to change how the actuator floats, it's probably going to be done he
     // pow() can't handle negative numbers raised to non-integer powers, so we use an ugly workaround
     // 64 is the theoretical maximum AUC. IPMORTANT: if the AUC formula changes, this magic number sholud change too.
     // float rawDeltaV = copysign(pow(abs(anticipatedAUC / 64), exponent), anticipatedAUC);
-    float rawDeltaV = anticipatedAUC / 24 * (abs(velocity) + 0.007) * maxAcceleration;
+    float rawDeltaV = anticipatedAUC / 400 * (abs(velocity) + 0.007) * maxAcceleration;
     float deltaV = clamp(rawDeltaV / inertia, -maxAcceleration, maxAcceleration);
     // if (Kernel::get_ms_count() % 200 == 0) {
     //     printf("%f \n", inScaled);
@@ -202,7 +204,7 @@ If a user wants to re-define movement limits, or recalibrate input, they are exp
 This will cause the actuator to make some big, abrupt moves though. 
 */
     calibrate();
-    // pull(0.52, 10000000);
+    pull(0.52, 10000000);
     while (true) {
     // If there's a rising edge in the 'retract now' signal, retract.
         if (fromMaster == true && fromMasterPrior == false) {
